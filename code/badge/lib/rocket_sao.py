@@ -53,6 +53,23 @@ LSD_THRESHOLD_CONFIG = 0x0B  # Data sheet recommended Dev_Config_12 value
 CONFIG_ERR = 0x01
 TSD_FAULT = 0x02
 
+# ATtiny target registers, see code/rocket_fw/rocket_fw.ino
+TINY_ADDR = 0x2A
+TINY_ID = 0x52
+TINY_REG_ID = 0x00
+TINY_REG_VERSION = 0x01
+TINY_REG_LIGHT = 0x10
+TINY_REG_LED_MODE = 0x20
+TINY_REG_HOST = 0x30
+
+TINY_LED_OFF = 0
+TINY_LED_ON = 1
+TINY_LED_PWM = 2
+TINY_LED_BLINK = 3
+
+_VCC_MV = 3300
+_ADC_MAX = 1023
+
 _ADC_SAMPLES = 16
 _FULL_SCALE_MV = 3100
 
@@ -124,6 +141,7 @@ class Rocket:
         )
         self.animating = False
         self.dc = DEFAULT_DC
+        self.tiny_version = None
 
     def lp_write(self, reg: int, data) -> None:
         """Write one byte, or several consecutive registers."""
@@ -142,8 +160,32 @@ class Rocket:
     def status(self) -> int:
         return self.lp_read(REG_STATUS)[0]
 
+    def tiny_write(self, reg: int, data) -> None:
+        if isinstance(data, int):
+            data = bytes((data,))
+        self.i2c.writeto(TINY_ADDR, bytes((reg,)) + bytes(data))
+
+    def tiny_read(self, reg: int, nbytes: int = 1) -> bytes:
+        self.i2c.writeto(TINY_ADDR, bytes((reg,)), False)
+        return self.i2c.readfrom(TINY_ADDR, nbytes)
+
+    def _find_tiny(self) -> None:
+        """Look for the ATtiny firmware and tell it a host is in charge."""
+        self.tiny_version = None
+        if TINY_ADDR not in self.i2c.scan():
+            return
+        self.tiny_write(TINY_REG_HOST, 1)
+        ident = self.tiny_read(TINY_REG_ID, 2)
+        if ident[0] == TINY_ID:
+            self.tiny_version = ident[1]
+
+    def set_tiny_led(self, mode: int, duty: int = 0, half_period: int = 50) -> None:
+        """Run the transistor-driven LED: half_period is in 10 ms units."""
+        self.tiny_write(TINY_REG_LED_MODE, bytes((mode, duty, half_period)))
+
     def init(self) -> None:
         """Put the LP5810 in a known state: manual mode with all LEDs off."""
+        self._find_tiny()
         time.sleep_ms(1)
         self.lp_write(REG_CHIP_EN, 0x01)
         self.lp_write(REG_STOP, CMD_STOP)
@@ -212,10 +254,15 @@ class Rocket:
             raise RocketError("LP5810 status 0x%02x" % status)
 
     def light_mv(self) -> int:
-        """Ambient light sensor voltage in mV, averaged over a short burst.
+        """Ambient light sensor voltage in mV.
 
-        The sensor is filtered by R1/C1 (about 0.56 s), so it responds slowly.
+        Comes from the ATtiny's filtered reading if it's running, otherwise from
+        a short burst of badge ADC readings. The sensor is filtered by R1/C1
+        (about 0.56 s), so it responds slowly either way.
         """
+        if self.tiny_version is not None:
+            low, high = self.tiny_read(TINY_REG_LIGHT, 2)
+            return ((high << 8) | low) * _VCC_MV // _ADC_MAX
         total = 0
         for _ in range(_ADC_SAMPLES):
             total += self.adc.read_uv()

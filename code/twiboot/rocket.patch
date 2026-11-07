@@ -1,0 +1,33 @@
+diff --git a/main.c b/main.c
+index 1f6cde7..6e582ef 100644
+--- a/main.c
++++ b/main.c
+@@ -23,7 +23,7 @@
+ 
+ #define VERSION_STRING          "TWIBOOT v3.2"
+ #define EEPROM_SUPPORT          1
+-#define LED_SUPPORT             1
++#define LED_SUPPORT             0
+ 
+ #ifndef USE_CLOCKSTRETCH
+ #define USE_CLOCKSTRETCH        0
+@@ -755,7 +755,8 @@ static void TIMER0_OVF_vect(void)
+ 
+ 
+ #if (VIRTUAL_BOOT_SECTION)
+-static void (*jump_to_app)(void) __attribute__ ((noreturn)) = (void*)APPVECT_ADDR;
++/* Function pointers hold word addresses, APPVECT_ADDR is a byte address */
++static void (*jump_to_app)(void) __attribute__ ((noreturn)) = (void*)(APPVECT_ADDR / 2);
+ #else
+ static void (*jump_to_app)(void) __attribute__ ((noreturn)) = (void*)0x0000;
+ #endif
+@@ -874,6 +875,9 @@ int main(void)
+ #elif defined (USICR)
+     /* Disable USI peripheral */
+     USICR = 0x00;
++    /* Release SDA and SCL: the bus is shared with the badge and the LP5810 */
++    DDRB &= ~((1<<PORTB0) | (1<<PORTB2));
++    PORTB &= ~((1<<PORTB0) | (1<<PORTB2));
+ #endif
+ 
+     /* disable timer0 */
