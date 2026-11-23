@@ -142,6 +142,23 @@
   .gotcha b { display: block; margin-bottom: 2px; }
   .gotcha.bad { border-color: var(--red); background: var(--red-soft); }
 
+  .phases { display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px; }
+  .phase { flex: 1 1 200px; border-radius: 12px; padding: 12px 14px; background: var(--accent-soft); border: 1px solid var(--accent); }
+  .phase.alt { background: var(--blue-soft); border-color: var(--blue); }
+  .phase.ok { background: var(--green-soft); border-color: var(--green); }
+  .phase b { display: block; font-size: 16px; }
+  .phase span { display: block; font-size: 13px; }
+  .phase em { display: block; font-style: normal; font-size: 12px; color: var(--muted); font-family: var(--mono); }
+  .arrow { align-self: center; font-size: 22px; color: var(--muted); }
+  @media (max-width: 760px) { .arrow { display: none; } }
+  .need { margin: 0; padding-left: 18px; font-size: 14px; }
+  .need li { margin: 3px 0; }
+  .prov { margin: 0; padding-left: 0; list-style: none; counter-reset: p; }
+  .prov[start="6"] { counter-reset: p 5; }
+  .prov > li { counter-increment: p; display: grid; grid-template-columns: 32px 1fr; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .prov > li:last-child { border-bottom: 0; }
+  .prov > li::before { content: counter(p); width: 26px; height: 26px; border-radius: 8px; background: var(--ink); color: var(--bg); display: grid; place-items: center; font-size: 13px; font-weight: 700; }
+  .prov > li > div { min-width: 0; }
   .note { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
   footer { margin-top: 28px; font-size: 13px; color: var(--muted); text-align: center; }
 
@@ -182,8 +199,112 @@
 <pre>avrdude -c stk500v1 -P /dev/ttyACM0 -b 19200 -p t85 \
   -U lfuse:w:0xE2:m -U hfuse:w:0xD5:m -U efuse:w:0xFE:m \
   -U flash:w:code/twiboot/twiboot_rocket.hex:i</pre>
-    <p class="note">The factory fuses read <code>E2 / DF / FF</code>. Without the hfuse and efuse changes, twiboot can't write flash. You only do this once per chip. After that, the badge installs <code>rocket_fw</code> over I2C (<code>lib/tiny_flash.py</code>), and you never need the programmer again.</p>
+    <p class="note">A brand-new ATtiny85 ships with fuses <code>62 / DF / FF</code> (1 MHz). Without the hfuse and efuse changes, twiboot can't write flash. You only do this once per chip; see <a href="#provision">Provisioning a new rocket</a> for the full walkthrough. After that, the badge installs <code>rocket_fw</code> over I2C (<code>lib/tiny_flash.py</code>), and you never need the programmer again.</p>
     <div class="warn"><b>Take the rocket off the badge before using the Uno/ISP.</b> The Uno's ISP lines are 5 V, and they would reach the ESP32's 3.3 V pins. J1 has no VCC pin, so power the rocket from SAO pin 1 separately.</div>
+  </section>
+
+  <!-- ===================== PROVISIONING ===================== -->
+  <section class="card c12" id="provision">
+    <h2>Provisioning a new rocket from a blank ATtiny85</h2>
+    <p style="margin:0 0 14px">There are two phases. You flash the <b>bootloader once with a programmer</b>, and then the <b>badge installs the firmware over I2C</b>. You never ISP-flash <code>rocket_fw</code> directly.</p>
+
+    <div class="phases">
+      <div class="phase"><b>Phase 1</b><span>Off the badge · Uno as ISP</span><em>fuses + twiboot</em></div>
+      <div class="arrow">→</div>
+      <div class="phase alt"><b>Phase 2</b><span>On the badge · I2C</span><em>rocket_fw via tiny_flash</em></div>
+      <div class="arrow">→</div>
+      <div class="phase ok"><b>Done</b><span>0x2A + 0x50–53 on the bus</span><em>future updates: Phase 2 only</em></div>
+    </div>
+
+    <div class="grid" style="margin-top:18px">
+      <div class="c5">
+        <h3>You'll need</h3>
+        <ul class="need">
+          <li>The assembled rocket (blank ATtiny85 soldered on)</li>
+          <li>An Arduino Uno + USB cable, used as the programmer</li>
+          <li>A 10 µF capacitor (stops the Uno auto-resetting)</li>
+          <li>Jumper wires to J1 (JST-PH 2 mm) and to SAO pins 1–2</li>
+          <li><code>avrdude</code> and the Arduino IDE on your computer</li>
+          <li>The badge, USB-C cable and <code>mpremote</code></li>
+          <li>From this repo: <code>twiboot_rocket.hex</code>, <code>rocket_fw.bin</code>, <code>code/badge/lib/*.py</code></li>
+        </ul>
+      </div>
+      <div class="c7">
+        <h3>Uno → rocket wiring</h3>
+        <svg viewBox="0 0 560 252" role="img" aria-label="Wiring: Uno D10 to J1 pin 4 RESET, D11 to J1 pin 1 MOSI, D12 to J1 pin 2 MISO, D13 to J1 pin 3 SCK, GND to J1 pin 5, 5V to SAO pin 1, GND to SAO pin 2">
+          <rect x="10" y="10" width="150" height="230" rx="10" fill="var(--blue-soft)" stroke="var(--blue)" stroke-width="2"/>
+          <text x="85" y="34" text-anchor="middle" font-weight="700">Arduino Uno</text>
+          <text x="85" y="52" text-anchor="middle" class="muted" font-size="11">running ArduinoISP</text>
+          <rect x="400" y="10" width="150" height="150" rx="10" fill="var(--green-soft)" stroke="var(--green)" stroke-width="2"/>
+          <text x="475" y="34" text-anchor="middle" font-weight="700">Rocket J1</text>
+          <rect x="400" y="172" width="150" height="72" rx="10" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
+          <text x="475" y="192" text-anchor="middle" font-weight="700">Rocket SAO J3</text>
+          <g font-size="12" class="mono">
+            <!-- y rows -->
+            <text x="150" y="78" text-anchor="end">D10</text><line x1="160" y1="74" x2="400" y2="134" stroke="var(--muted)" stroke-width="2.5"/><text x="410" y="138">4 RESET</text>
+            <text x="150" y="100" text-anchor="end">D11</text><line x1="160" y1="96" x2="400" y2="62" stroke="var(--blue)" stroke-width="2.5"/><text x="410" y="66">1 MOSI/SDA</text>
+            <text x="150" y="122" text-anchor="end">D12</text><line x1="160" y1="118" x2="400" y2="86" stroke="var(--green)" stroke-width="2.5"/><text x="410" y="90">2 MISO/LED</text>
+            <text x="150" y="144" text-anchor="end">D13</text><line x1="160" y1="140" x2="400" y2="110" stroke="var(--violet)" stroke-width="2.5"/><text x="410" y="114">3 SCK/SCL</text>
+            <text x="150" y="166" text-anchor="end">GND</text><line x1="160" y1="162" x2="400" y2="152" stroke="var(--ink)" stroke-width="2.5"/><text x="410" y="156">5 GND</text>
+            <text x="150" y="196" text-anchor="end">5V</text><line x1="160" y1="192" x2="400" y2="212" stroke="var(--red)" stroke-width="2.5"/><text x="410" y="216">pin 1 VCC</text>
+            <text x="150" y="218" text-anchor="end">GND</text><line x1="160" y1="214" x2="400" y2="232" stroke="var(--ink)" stroke-width="2.5"/><text x="410" y="236">pin 2 GND</text>
+            <text x="85" y="232" text-anchor="middle" class="muted" font-size="10">10 µF: RESET→GND</text>
+          </g>
+        </svg>
+        <p class="note">Power comes from the Uno's 5 V because its ISP lines are 5 V. Powering the rocket at 3.3 V while 5 V signals hit it would back-feed through the pins. This is fine off the badge, and it's exactly why the rocket must <b>not</b> be on the badge for Phase 1.</p>
+      </div>
+    </div>
+
+    <h3 style="margin-top:18px">Phase 1 · bootloader and fuses (Uno as ISP, rocket off the badge)</h3>
+    <ol class="prov">
+      <li><div><b>Turn the Uno into a programmer.</b> In the Arduino IDE, open <i>File → Examples → 11.ArduinoISP → ArduinoISP</i> and upload it to the Uno. <i>Then</i> fit the 10 µF capacitor between the Uno's RESET and GND (− leg to GND), so avrdude opening the port doesn't reset the Uno.</div></li>
+      <li><div><b>Wire it up</b> as shown above, with the rocket unplugged from everything else.</div></li>
+      <li><div><b>Check that the chip answers.</b> The signature should be <code>1E 93 0B</code>. A blank chip's fuses read <code>62 / DF / FF</code> (1 MHz clock, which ArduinoISP's slow default SPI clock handles fine).
+<pre>avrdude -c stk500v1 -P /dev/ttyACM0 -b 19200 -p t85 \
+  -U lfuse:r:-:h -U hfuse:r:-:h -U efuse:r:-:h</pre></div></li>
+      <li><div><b>Erase, then write the fuses and twiboot</b> in one go:
+<pre>avrdude -c stk500v1 -P /dev/ttyACM0 -b 19200 -p t85 -e \
+  -U lfuse:w:0xE2:m -U hfuse:w:0xD5:m -U efuse:w:0xFE:m \
+  -U flash:w:code/twiboot/twiboot_rocket.hex:i</pre>
+        avrdude verifies the flash itself. Re-run the read command from step 3 and you should see <code>E2 / D5 / FE</code>.</div></li>
+      <li><div><b>Disconnect the Uno completely</b>, including the 5 V and GND wires.</div></li>
+    </ol>
+
+    <h3 style="margin-top:18px">Phase 2 · install rocket_fw from the badge (over I2C)</h3>
+    <ol class="prov" start="6">
+      <li><div><b>Put the support files on the badge</b>, if they aren't there yet. From <code>code/badge/</code>:
+<pre>mpremote cp lib/rocket_sao.py :lib/rocket_sao.py
+mpremote cp lib/tiny_flash.py :lib/tiny_flash.py
+mpremote mkdir :data            # skip if it exists
+mpremote cp data/rocket_fw.bin :data/rocket_fw.bin
+mpremote cp apps/rocket.py :apps/rocket.py</pre></div></li>
+      <li><div><b>Plug the rocket into SAO1 with the badge off</b>, with pin 1 to pin 1, fully seated. Unplug any other SAOs for now.</div></li>
+      <li><div><b>Power on and look at the bus</b> (<code>mpremote repl</code>):
+<pre>from lib.rocket_sao import Rocket
+r = Rocket(1)
+[hex(a) for a in r.i2c.scan()]
+# expect 0x50-0x53 (LP5810), and 0x29 (twiboot, as there's no app yet)</pre>
+        The LP5810 should always show. If <code>0x29</code> doesn't show up, that's OK: <code>flash_file</code> keeps looking for 2 s.</div></li>
+      <li><div><b>Flash the firmware</b> (takes about 1.2 s):
+<pre>from lib import tiny_flash
+tiny_flash.flash_file(r.i2c, "/data/rocket_fw.bin",
+    progress=lambda f: print("%d%%" % (f * 100)))</pre>
+        It verifies every page and only returns once the app answers on <code>0x2A</code>. If it raises, just run it again, because the chip stays in twiboot.</div></li>
+      <li><div><b>Confirm the firmware is running</b>:
+<pre>r.init()
+r.tiny_version          # firmware version number, not None
+r.animate("breathe")    # LEDs D4-D7 breathe
+r.set_tiny_led(1)       # LED D1 on
+r.light_level()         # changes when you cover the sensor</pre></div></li>
+      <li><div><b>Final check:</b> hard-reset the badge, open the <b>Rocket</b> app, and step through the animations with User A. Optionally, power-cycle the rocket on a badge <i>without</i> the app: after about 5 s it should start breathing by itself (standalone mode).</div></li>
+    </ol>
+
+    <div class="gotchas" style="margin-top:16px">
+      <div class="gotcha"><b>avrdude: "Device signature = 0x000000" or "not in sync"</b>Check the wiring (MISO/MOSI swapped is common), the 10 µF cap, that the rocket has 5 V on SAO pin 1, and the right <code>-P</code> port. The Uno shows up as USB vendor <code>2341</code>, and the badge as <code>303a</code>.</div>
+      <div class="gotcha"><b>The badge's scan is empty after plugging in</b>Reseat the rocket and remove any other SAOs. If SCL reads low, power-cycle the badge. Never connect the Uno while the rocket is on the badge.</div>
+      <div class="gotcha"><b>"bootloader not found"</b>twiboot isn't on the chip, or the fuses weren't written (check for <code>E2 / D5 / FE</code>). Redo Phase 1.</div>
+      <div class="gotcha"><b>Why not ISP-flash rocket_fw too?</b>twiboot fakes a boot section by rewriting the reset vector in page 0 when it flashes the app. A raw ISP write of the app would skip that, and the chip would never reach twiboot again.</div>
+    </div>
   </section>
 
   <!-- ===================== STATUS ===================== -->
