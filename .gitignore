@@ -41,3 +41,4 @@ fp-info-cache
 
 # Local project settings
 *.kicad_prl
+code/badge/lib/__pycache__/
